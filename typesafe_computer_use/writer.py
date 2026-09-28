@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import io
 import json
-import os
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -17,7 +16,9 @@ from .config import (
     answer_model,
     answer_reasoning,
     custom_writer_endpoint,
+    vercel_gateway,
     writer_api,
+    writer_api_key,
     writer_base_url,
     writer_model,
     writer_reasoning,
@@ -42,13 +43,18 @@ def make_writer() -> Writer | None:
     """A client, or None when there is nothing to write with.
 
     A key only ever goes to the endpoint it belongs to. CLICKER_WRITER_BASE_URL (see
-    config.writer_base_url) is paired with CLICKER_WRITER_API_KEY, or with a placeholder when that
-    is unset, since an endpoint you host yourself checks no key. Otherwise the SDK reads the
-    ANTHROPIC_* key, token, and base URL as it always does. An endpoint that speaks OpenAI's API
-    (CLICKER_WRITER_API=openai) has no default to fall back on, so it must be named.
+    config.writer_base_url) is paired with CLICKER_WRITER_API_KEY, or with Vercel's own key on
+    Vercel's AI Gateway (see config.writer_api_key), or with a placeholder when there is none, since
+    an endpoint you host yourself checks no key. The gateway always checks one, so a run without it
+    stops here rather than at its first stop. Otherwise the SDK reads the ANTHROPIC_* key, token,
+    and base URL as it always does. An endpoint that speaks OpenAI's API (CLICKER_WRITER_API=openai)
+    has no default to fall back on, so it must be named.
     """
     base_url = writer_base_url()
-    key = os.environ.get("CLICKER_WRITER_API_KEY") or PLACEHOLDER_KEY
+    key = writer_api_key()
+    if base_url and not key and vercel_gateway():
+        raise ValueError("Vercel's AI Gateway needs a key: set AI_GATEWAY_API_KEY (or CLICKER_WRITER_API_KEY)")
+    key = key or PLACEHOLDER_KEY
     if writer_api() == "openai":
         if not base_url:
             raise ValueError("CLICKER_WRITER_API=openai needs CLICKER_WRITER_BASE_URL, such as http://localhost:1234/v1")

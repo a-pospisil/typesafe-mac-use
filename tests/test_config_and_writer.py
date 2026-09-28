@@ -3,8 +3,16 @@ from types import SimpleNamespace
 
 import pytest
 
+from typesafe_computer_use import config
 from typesafe_computer_use.calls import Calls, MeteredWriter
-from typesafe_computer_use.config import custom_writer_endpoint, load_dotenv, writer_base_url
+from typesafe_computer_use.config import (
+    answer_model,
+    custom_writer_endpoint,
+    load_dotenv,
+    writer_api_key,
+    writer_base_url,
+    writer_model,
+)
 from typesafe_computer_use.writer import WriterError, compose_url, make_writer, parse_json, provider, valid_url
 
 
@@ -120,6 +128,68 @@ def test_the_startup_line_leaves_credentials_out_of_the_url(clean_env):
     line = provider(make_writer())
     assert line.startswith("https://proxy.example.com (anthropic API)  models:")
     assert "secret" not in line
+
+
+GATEWAY = "https://ai-gateway.vercel.sh"
+
+
+@pytest.mark.parametrize(("api", "path"), [("anthropic", "/v1/messages"), ("openai", "/v1/chat/completions")])
+def test_vercels_gateway_gets_vercels_key_and_its_own_model_names(clean_env, endpoint, api, path):
+    clean_env.setattr(config, "VERCEL_GATEWAY_HOST", "127.0.0.1")  # the local endpoint stands in for the gateway
+    clean_env.setenv("CLICKER_WRITER_API", api)
+    clean_env.setenv("CLICKER_WRITER_BASE_URL", f"{endpoint.url}/v1")
+    clean_env.setenv("AI_GATEWAY_API_KEY", "vck-gateway")
+    clean_env.setenv("ANTHROPIC_API_KEY", "sk-ant-real")
+    compose_url(make_writer(), "open example", [])
+    (request,) = endpoint.seen
+    assert request["path"] == path
+    assert request["headers"]["authorization"] == "Bearer vck-gateway"
+    assert not any("sk-ant-real" in v for v in request["headers"].values())
+    assert request["body"]["model"] == "anthropic/claude-haiku-4.5"
+    assert answer_model() == "anthropic/claude-sonnet-5"
+
+
+def test_a_gateway_key_goes_to_the_gateway_alone(clean_env, endpoint):
+    clean_env.setenv("CLICKER_WRITER_BASE_URL", endpoint.url)
+    clean_env.setenv("AI_GATEWAY_API_KEY", "vck-gateway")
+    clean_env.setenv("VERCEL_OIDC_TOKEN", "oidc-gateway")
+    compose_url(make_writer(), "open example", [])
+    headers = endpoint.seen[0]["headers"]
+    assert headers["x-api-key"] == "not-needed"
+    assert not any("gateway" in v for v in headers.values())
+    assert endpoint.seen[0]["body"]["model"] == config.DEFAULT_WRITER_MODEL
+
+
+@pytest.mark.parametrize(
+    ("env", "key"),
+    [
+        ({"AI_GATEWAY_API_KEY": "vck", "VERCEL_OIDC_TOKEN": "oidc"}, "vck"),
+        ({"VERCEL_OIDC_TOKEN": "oidc"}, "oidc"),
+        ({"CLICKER_WRITER_API_KEY": "mine", "AI_GATEWAY_API_KEY": "vck"}, "mine"),
+    ],
+)
+def test_the_gateway_key_is_the_writers_own_then_vercels(clean_env, env, key):
+    clean_env.setenv("CLICKER_WRITER_BASE_URL", f"{GATEWAY}/v1/messages")
+    for name, value in env.items():
+        clean_env.setenv(name, value)
+    assert writer_api_key() == key
+    assert make_writer().api_key == key
+
+
+def test_the_gateway_without_a_key_stops_before_the_run(clean_env):
+    clean_env.setenv("CLICKER_WRITER_BASE_URL", GATEWAY)
+    with pytest.raises(ValueError, match="AI_GATEWAY_API_KEY"):
+        make_writer()
+
+
+def test_claude_code_style_gateway_setup_gets_the_gateway_model_names_unless_others_are_named(clean_env):
+    clean_env.setenv("ANTHROPIC_BASE_URL", GATEWAY)
+    clean_env.setenv("ANTHROPIC_AUTH_TOKEN", "vck-gateway")
+    assert (writer_model(), answer_model()) == (config.VERCEL_GATEWAY_WRITER_MODEL, config.VERCEL_GATEWAY_ANSWER_MODEL)
+    assert writer_api_key() is None  # the SDK sends ANTHROPIC_AUTH_TOKEN there itself
+    clean_env.setenv("CLICKER_WRITER_MODEL", "openai/gpt-5-mini")
+    clean_env.setenv("CLICKER_ANSWER_MODEL", "google/gemini-3.5-flash")
+    assert (writer_model(), answer_model()) == ("openai/gpt-5-mini", "google/gemini-3.5-flash")
 
 
 @pytest.mark.parametrize(

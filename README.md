@@ -76,8 +76,8 @@ cp .env.example .env     # fill in the keys
 | `CLICKER_BROWSER` | no | defaults to `Google Chrome` |
 
 `.env` lives at the repo root and is read by every entry point (`clicker`, `clicker-inspect`).
-To run the writer on another model or endpoint (LM Studio, Ollama, any OpenAI-compatible
-server), see [writer endpoints](docs/writer-endpoints.md).
+To run the writer on another model or endpoint (Vercel's AI Gateway, LM Studio, Ollama, any
+OpenAI-compatible server), see [writer endpoints](docs/writer-endpoints.md).
 
 Grant your terminal **Screen Recording** and **Accessibility** in System Settings >
 Privacy & Security. Without the first, captures are wallpaper. Without the second,
@@ -128,7 +128,7 @@ a one-command machine in Google Cloud.
 - [How a step works](docs/how-a-step-works.md): perception, the three-part decision, the action space, stalls, and the hand-off to the writer
 - [Run folder](docs/run-folder.md): what every run writes, the timing line, and offline replay
 - [Browser backend](docs/browser-backend.md): DOM perception over Chrome DevTools, no OCR, no screen permission
-- [Writer endpoints](docs/writer-endpoints.md): every writer variable, and other models over the Anthropic or OpenAI API
+- [Writer endpoints](docs/writer-endpoints.md): every writer variable, Vercel's AI Gateway, and other models over the Anthropic or OpenAI API
 - [Windows](docs/windows.md): the experimental adapter and how it differs from macOS
 - [OSWorld](docs/osworld.md): setup, the two run commands, results, and the Google Cloud machine
 - [Layout](docs/layout.md): every module and what it owns

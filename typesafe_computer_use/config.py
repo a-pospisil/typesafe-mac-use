@@ -18,6 +18,12 @@ DEFAULT_ANSWER_MODEL = "claude-sonnet-5"  # runs only when the classifier stops,
 DEFAULT_BROWSER = "Google Chrome"
 ANTHROPIC_HOST = "api.anthropic.com"
 WRITER_APIS = ("anthropic", "openai")
+# Vercel's AI Gateway speaks both writer APIs and names each model by its maker, with dots in the
+# version, so the defaults above do not exist there. These are the same two models under its names.
+VERCEL_GATEWAY_HOST = "ai-gateway.vercel.sh"
+VERCEL_GATEWAY_WRITER_MODEL = "anthropic/claude-haiku-4.5"
+VERCEL_GATEWAY_ANSWER_MODEL = "anthropic/claude-sonnet-5"
+VERCEL_GATEWAY_KEYS = ("AI_GATEWAY_API_KEY", "VERCEL_OIDC_TOKEN")  # Vercel's own names, the API key first as Vercel reads them
 
 # Sites the classifier can pick by name. Anything else goes through the writer.
 SITES: dict[str, str] = {
@@ -49,7 +55,8 @@ def browser() -> str:
 
 
 def writer_model() -> str:
-    return os.environ.get("CLICKER_WRITER_MODEL", DEFAULT_WRITER_MODEL)
+    default = VERCEL_GATEWAY_WRITER_MODEL if vercel_gateway() else DEFAULT_WRITER_MODEL
+    return os.environ.get("CLICKER_WRITER_MODEL", default)
 
 
 def writer_api() -> str:
@@ -80,6 +87,29 @@ def writer_base_url() -> str | None:
     return base.rstrip("/") or None
 
 
+def writer_api_key() -> str | None:
+    """The key for CLICKER_WRITER_BASE_URL: CLICKER_WRITER_API_KEY, or None for an endpoint that checks none.
+
+    When that URL is Vercel's AI Gateway, Vercel's own AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN
+    serves as well. They are read for that host alone, so a gateway key never goes anywhere else.
+    """
+    key = os.environ.get("CLICKER_WRITER_API_KEY")
+    if key or not _is_vercel_gateway(writer_base_url()):
+        return key or None
+    return next((os.environ[name] for name in VERCEL_GATEWAY_KEYS if os.environ.get(name)), None)
+
+
+def vercel_gateway() -> bool:
+    """Whether the writer talks to Vercel's AI Gateway: named in CLICKER_WRITER_BASE_URL, or in
+    ANTHROPIC_BASE_URL as Vercel sets Claude Code up, with the Anthropic credentials beside it."""
+    url = writer_base_url() or (os.environ.get("ANTHROPIC_BASE_URL") if writer_api() == "anthropic" else None)
+    return _is_vercel_gateway(url)
+
+
+def _is_vercel_gateway(url: str | None) -> bool:
+    return bool(url) and urlparse(url).hostname == VERCEL_GATEWAY_HOST
+
+
 def custom_writer_endpoint() -> bool:
     """Whether the writer talks to anything but Anthropic's own API, by either variable."""
     if writer_api() == "openai":
@@ -97,7 +127,8 @@ def writer_vision() -> bool:
 
 
 def answer_model() -> str:
-    return os.environ.get("CLICKER_ANSWER_MODEL", DEFAULT_ANSWER_MODEL)
+    default = VERCEL_GATEWAY_ANSWER_MODEL if vercel_gateway() else DEFAULT_ANSWER_MODEL
+    return os.environ.get("CLICKER_ANSWER_MODEL", default)
 
 
 def writer_reasoning() -> str | None:
